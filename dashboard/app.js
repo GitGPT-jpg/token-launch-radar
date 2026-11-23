@@ -44,6 +44,10 @@
     if (days >= 365) return (days / 365).toFixed(1) + 'y';
     return days + 'd';
   }
+  function fmtOdds(o) {
+    if (o === null || o === undefined || !isFinite(o)) return 'n/a';
+    return Math.round(o * 100) + '%';
+  }
 
   // ---- tiny DOM helpers --------------------------------------------------
   function el(tag, cls, text) {
@@ -58,7 +62,7 @@
     return td;
   }
 
-  // ---- header chips, footer, multiples ------------------------------------
+  // ---- header chips, footer, method tables --------------------------------
   function renderMeta() {
     var chips = document.getElementById('chips');
     var items = [
@@ -79,6 +83,16 @@
     document.getElementById('floor').textContent = fmtUsdFull(DATA.floor_usd);
     document.getElementById('modelver').textContent = DATA.model_version;
 
+    var fit = (DATA.fit || {}).params || {};
+    function setFit(id, v) {
+      var n = document.getElementById(id);
+      if (n) n.textContent = String(v);
+    }
+    setFit('fit-k', fit.shrink_k);
+    setFit('fit-s', fit.size_exponent);
+    setFit('fit-w', fit.growth_weight);
+    setFit('fit-m', fit.maturity_floor);
+
     var tbody = document.querySelector('#multiples tbody');
     Object.keys(DATA.multiples || {})
       .sort()
@@ -87,15 +101,44 @@
         var tr = el('tr');
         tr.appendChild(el('td', null, cat));
         var tdMult = el('td', 'num', '×' + m.multiple.toFixed(4));
+        if (m.clamped) tdMult.textContent += ' *';
         tr.appendChild(tdMult);
+        tr.appendChild(el('td', 'num', '×' + m.raw_median.toFixed(4)));
         tr.appendChild(el('td', 'num', String(m.sample)));
         tbody.appendChild(tr);
       });
     var tr = el('tr');
     tr.appendChild(el('td', null, 'Global (fallback)'));
     tr.appendChild(el('td', 'num', '×' + DATA.global_multiple.toFixed(4)));
+    tr.appendChild(el('td', 'num', '×' + DATA.global_multiple.toFixed(4)));
     tr.appendChild(el('td', 'num', 'all token protocols'));
     tbody.appendChild(tr);
+
+    var vbody = document.querySelector('#validation tbody');
+    ((DATA.fit || {}).folds || []).forEach(function (f) {
+      [['Fitted model', f.fitted], ['Previous model', f.v2]].forEach(function (pair) {
+        var r = el('tr');
+        r.appendChild(el('td', null, 'Fold ' + f.fold));
+        r.appendChild(el('td', 'num', String(f.n_valid)));
+        r.appendChild(el('td', null, pair[0]));
+        r.appendChild(el('td', 'num', pair[1].median_abs_log_err.toFixed(3)));
+        r.appendChild(el('td', 'num', pair[1].rmse_log.toFixed(3)));
+        r.appendChild(el('td', 'num', Math.round(pair[1].within_2x * 100) + '%'));
+        vbody.appendChild(r);
+      });
+    });
+
+    var obody = document.querySelector('#odds-age tbody');
+    var odds = DATA.odds || {};
+    Object.keys(odds.byAgeBucket || {}).forEach(function (label) {
+      var b = odds.byAgeBucket[label];
+      var r = el('tr');
+      r.appendChild(el('td', null, label));
+      r.appendChild(el('td', 'num', String(b.tokened)));
+      r.appendChild(el('td', 'num', String(b.total)));
+      r.appendChild(el('td', 'num', Math.round(b.rate * 100) + '%'));
+      obody.appendChild(r);
+    });
   }
 
   // ---- filter controls -----------------------------------------------------
@@ -132,6 +175,7 @@
       if (key === 'chains') return (r.chains || [])[0] || '';
       if (key === 'name') return r.name.toLowerCase();
       if (key === 'category') return (r.category || '').toLowerCase();
+      if (key === 'confidence') return { low: 1, medium: 2, high: 3 }[r.confidence] || 0;
       return r[key];
     }
     out.sort(function (a, b) {
@@ -166,10 +210,10 @@
       if (watchlist[r.slug]) catTd.appendChild(el('span', 'tag watch', 'watchlist'));
       tr.appendChild(catTd);
       var chainTd = el('td');
-      (r.chains || []).slice(0, 2).forEach(function (c) {
+      (r.chains || []).slice(0, 1).forEach(function (c) {
         chainTd.appendChild(el('span', 'tag', c));
       });
-      if ((r.chains || []).length > 2) chainTd.appendChild(el('span', 'tag', '+' + (r.chains.length - 2)));
+      if ((r.chains || []).length > 1) chainTd.appendChild(el('span', 'tag', '+' + (r.chains.length - 1)));
       tr.appendChild(chainTd);
       tr.appendChild(numCell(fmtUsd(r.tvl_usd)));
       var pctTd = numCell(fmtPct(r.change_7d));
@@ -181,14 +225,17 @@
       impTd.style.fontWeight = '700';
       tr.appendChild(impTd);
       tr.appendChild(numCell('×' + r.base_multiple.toFixed(2)));
-      tr.appendChild(numCell(fmtAge(r.age_days)));
+      tr.appendChild(numCell(fmtOdds(r.token_odds)));
+      var confTd = el('td');
+      confTd.appendChild(el('span', 'conf conf-' + r.confidence, r.confidence));
+      tr.appendChild(confTd);
       tr.addEventListener('click', function () { selectRow(r.slug); });
       tbody.appendChild(tr);
     });
     document.getElementById('count').textContent =
       'Showing ' + list.length + ' of ' + rows.length + ' rows · ' +
       rows.filter(function (r) { return watchlist[r.slug]; }).length + ' on the watchlist · ' +
-      'click a row for its model breakdown and farm plan.';
+      'click a row for its model breakdown, token odds and farm plan.';
     document.querySelectorAll('#board thead th').forEach(function (th) {
       th.classList.toggle('sorted', th.getAttribute('data-sort') === state.sort);
     });
@@ -249,10 +296,12 @@
     var grid = el('div', 'model-grid');
     var cells = [
       ['TVL', fmtUsdFull(row.tvl_usd), 'the snapshot figure'],
-      ['Category multiple', '×' + row.base_multiple.toFixed(4), 'median FDV/TVL of its category'],
+      ['Category multiple', '×' + row.base_multiple.toFixed(4), 'shrunk median market-cap/TVL of its category'],
       ['Base value', fmtUsdFull(row.base_usd), 'TVL × multiple'],
+      ['Size', '×' + row.size_multiplier.toFixed(2), 'TVL against the $100M reference'],
       ['7d growth', fmtPct(row.growth_pct) + ' → ×' + row.growth_multiplier.toFixed(2), 'clamped −50% to +100%'],
       ['Maturity', '×' + row.maturity_multiplier.toFixed(2), fmtAge(row.age_days) + ' old'],
+      ['Token odds', fmtOdds(row.token_odds), 'category ' + Math.round(row.odds_category_rate * 100) + '% · age ' + row.odds_age_bucket + ' ' + Math.round(row.odds_age_rate * 100) + '%'],
     ];
     cells.forEach(function (c) {
       var cell = el('div', 'model-cell');
@@ -264,11 +313,27 @@
     var total = el('div', 'model-cell total');
     total.appendChild(el('div', 'label', 'Implied value'));
     total.appendChild(el('div', 'value', fmtUsdFull(row.implied_value_usd)));
-    total.appendChild(el('div', 'formula', 'base × growth × maturity'));
+    total.appendChild(el('div', 'formula', 'base × size × growth × maturity'));
     grid.appendChild(total);
     box.appendChild(grid);
+
+    var strip = el('div', 'integrity conf-' + row.confidence);
+    var level = el('span', 'integrity-level', 'Confidence: ' + row.confidence);
+    strip.appendChild(level);
+    if (row.confidence_flags && row.confidence_flags.length > 0) {
+      var ul = el('ul', 'integrity-flags');
+      row.confidence_flags.forEach(function (f) {
+        ul.appendChild(el('li', null, f));
+      });
+      strip.appendChild(ul);
+    } else {
+      strip.appendChild(el('p', 'integrity-none', 'No flags: the category counted enough token protocols, the growth and listing date were reported, and the multiple stayed inside its clamp.'));
+    }
+    box.appendChild(strip);
+
     var farm = el('div', 'farm');
     farm.appendChild(el('h3', null, 'Farm plan — ' + row.farm_steps.length + ' steps'));
+    farm.appendChild(el('p', 'verdict', row.farm_verdict));
     var ol = el('ol');
     row.farm_steps.forEach(function (step) {
       var li = el('li');

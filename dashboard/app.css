@@ -120,7 +120,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 20px 40px; }
 /* Board table */
 .board-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .board { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.board th, .board td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.board th, .board td { padding: 6px 6px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .board thead th {
   background: #efe9db;
   font-size: 12px;
@@ -199,5 +199,43 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 20px 40px; }
 .farm ol { margin: 0; padding-left: 22px; }
 .farm li { margin: 9px 0; line-height: 1.5; }
 .farm li .cost { font-weight: 700; color: var(--accent); }
+
+/* Confidence */
+.conf {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+.conf-high { background: #e2f2e8; color: var(--good); border: 1px solid #9ecfae; }
+.conf-medium { background: #fdf3d7; color: var(--gold); border: 1px solid #d9b64a; }
+.conf-low { background: #fbe7e5; color: var(--bad); border: 1px solid #e0a49e; }
+
+/* Detail: integrity strip and farm verdict */
+.integrity {
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--ink-soft);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 14px 0 6px;
+  background: var(--paper);
+}
+.integrity.conf-high { border-left-color: var(--good); }
+.integrity.conf-medium { border-left-color: #d9b64a; }
+.integrity.conf-low { border-left-color: var(--bad); }
+.integrity-level { font-weight: 700; text-transform: capitalize; }
+.integrity-flags { margin: 8px 0 0; padding-left: 20px; }
+.integrity-flags li { margin: 4px 0; font-size: 13.5px; color: var(--ink-soft); }
+.integrity-none { margin: 8px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+.verdict {
+  background: var(--accent-soft);
+  border: 1px solid #e8b48f;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
 
 footer { max-width: 1180px; margin: 0 auto; padding: 0 20px 34px; color: var(--ink-soft); font-size: 13px; }

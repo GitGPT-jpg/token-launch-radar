@@ -11,9 +11,9 @@
   <div class="masthead-inner">
     <p class="kicker">Token Launch Radar</p>
     <h1>Which protocol without a token would be worth the most?</h1>
-    <p class="lede">A board of pre-token protocols, ranked by an implied value derived from the
-      snapshot itself — no names hardcoded, no price predicted. Every row carries a farm plan:
-      what to do, what it costs, how long it takes.</p>
+    <p class="lede">A board of pre-token protocols, ranked by an implied value fitted from the
+      snapshot itself — no names hardcoded, no price predicted. Every row carries its token
+      odds, a note on what to trust, and a farm plan: what to do, what it costs, how long it takes.</p>
     <div class="chips" id="chips"></div>
   </div>
 </header>
@@ -22,20 +22,63 @@
   <details class="method" id="method">
     <summary>How the value is worked out — the model, in full</summary>
     <div class="method-body">
-      <p><strong>Implied value = TVL × category multiple × growth × maturity.</strong></p>
+      <p><strong>Implied value = TVL × category multiple × size × growth × maturity.</strong>
+        Every term is fitted on the snapshot's own token protocols, not picked by hand.</p>
       <ol>
-        <li><strong>Category multiple.</strong> For each category, the median FDV/TVL of the
-          protocols in that category that already have a token (at least 4 of them; thinner
-          categories use the global median). The multiple is clamped to 0.05 – 3.00.</li>
+        <li><strong>Category multiple.</strong> For each category, the median market-cap/TVL
+          of the protocols in that category that already have a token — shrunk toward the
+          global median by a pseudo-count the fit chooses (k = <span id="fit-k"></span>). A thin
+          category (one token protocol) barely moves the global figure; a thick one owns its
+          multiple. The multiple is clamped to 0.05 – 3.00. The table below shows the raw
+          median beside the shrunk multiple, so the shrinkage can be checked.</li>
+        <li><strong>Size.</strong> (TVL / $100M) raised to a fitted exponent
+          (<span id="fit-s"></span>). The snapshot's token protocols show the ratio falls as TVL
+          grows — a log-log slope near −0.4 overall, −0.35 within a category — so giants are
+          marked down and the board is not a TVL table.</li>
         <li><strong>Growth.</strong> The protocol's 7-day TVL change, clamped to −50% – +100%,
-          times a 0.40 weight: growth = 1 + growth% / 100 × 0.40.</li>
+          times a fitted weight (<span id="fit-w"></span>):
+          growth = 1 + growth% / 100 × weight.</li>
         <li><strong>Maturity.</strong> Age since the protocol was first listed, up to 730 days:
-          maturity = 0.70 + min(age, 730) / 730 × 0.30. A protocol with no listing date counts as 365 days old.</li>
+          maturity = floor + (1 − floor) × min(age, 730) / 730, with the floor fitted
+          (<span id="fit-m"></span>). A protocol with no listing date counts as 365 days old.</li>
       </ol>
+      <p><strong>How the four knobs were chosen.</strong> A grid search over all four, scored
+        by held-out error — never by in-sample error. The 128 token protocols with a market
+        cap above zero were split twice by a hash of the slug (folds A and B); each candidate
+        was scored on a fold's validation protocols using only that fold's training protocols,
+        and the candidate with the lowest mean held-out error won. The board uses those knobs
+        with the multiples fitted on all 128. The table below scores the fitted model and the
+        previous model (fixed 0.40 growth weight, 0.70 maturity floor, no size term, hard
+        4-sample category rule) on the same held-out folds.</p>
+      <table class="multiples" id="validation">
+        <thead><tr><th>Fold</th><th>Protocols held out</th><th>Model</th><th>Median error</th><th>RMSE (log)</th><th>Within 2×</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="fine">Errors are in log points on market cap: a median error of 1.0 means the
+        typical prediction is off by about e¹ ≈ 2.7×. The multiple is a rough guide, not a
+        price — the board ranks by it, and the confidence strip on each row says how rough.</p>
+      <p><strong>Token odds.</strong> How often protocols like this one have a token: the
+        category's token rate and the age bucket's token rate, each shrunk toward the global
+        rate of 19%, blended 70% category and 30% age. The odds never move the ranking; they
+        tell the reader how likely the launch this board is priced for actually is.</p>
+      <table class="multiples" id="odds-age">
+        <thead><tr><th>Age bucket</th><th>Token protocols</th><th>All protocols</th><th>Rate used</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p><strong>What to trust.</strong> Each row carries a confidence level. High means no
+        flag: the category counted at least 4 token protocols, the growth and the listing date
+        were reported, the multiple stayed inside its clamp, and the size adjustment is small.
+        Every flag is listed on the row's detail view — thin category evidence, a clamped
+        multiple, missing growth or listing date, or a large size adjustment. Three things the
+        numbers cannot do: the snapshot carries market cap, not fully diluted value, so every
+        multiple here is a market-cap multiple; 15 token protocols record a zero market cap
+        and are left out of the fit, because a zero is a missing value, not a value; and within
+        a category, token protocols' ratios spread by 10× or more, so any single multiple is
+        an estimate.</p>
       <p>The table below lists every category multiple the model used, with its sample size,
         so the ranking can be checked from the snapshot alone.</p>
       <table class="multiples" id="multiples">
-        <thead><tr><th>Category</th><th>Multiple</th><th>Token protocols counted</th></tr></thead>
+        <thead><tr><th>Category</th><th>Multiple used</th><th>Raw median</th><th>Token protocols counted</th></tr></thead>
         <tbody></tbody>
       </table>
       <p class="fine">A protocol is called pre-token when its record carries no market cap, no
@@ -77,7 +120,8 @@
           <th data-sort="change_7d">7d</th>
           <th data-sort="implied_value_usd">Implied value</th>
           <th data-sort="base_multiple">Multiple</th>
-          <th data-sort="age_days">Age</th>
+          <th data-sort="token_odds">Token odds</th>
+          <th data-sort="confidence">Confidence</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -89,7 +133,7 @@
     <table class="board" id="live">
       <thead>
         <tr>
-          <th>Protocol</th><th>Category</th><th>Chains</th><th>TVL</th><th>Market cap</th><th>FDV / TVL</th><th>7d</th>
+          <th>Protocol</th><th>Category</th><th>Chains</th><th>TVL</th><th>Market cap</th><th>Market cap / TVL</th><th>7d</th>
         </tr>
       </thead>
       <tbody></tbody>
