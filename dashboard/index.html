@@ -44,12 +44,17 @@
       </ol>
       <p><strong>How the four knobs were chosen.</strong> A grid search over all four, scored
         by held-out error — never by in-sample error. The 128 token protocols with a market
-        cap above zero were split twice by a hash of the slug (folds A and B); each candidate
-        was scored on a fold's validation protocols using only that fold's training protocols,
-        and the candidate with the lowest mean held-out error won. The board uses those knobs
-        with the multiples fitted on all 128. The table below scores the fitted model and the
-        previous model (fixed 0.40 growth weight, 0.70 maturity floor, no size term, hard
-        4-sample category rule) on the same held-out folds.</p>
+        cap above zero were split five ways by a hash of the slug (folds A to E, each protocol
+        held out exactly once); each candidate was scored on a fold's validation protocols using
+        only that fold's training protocols, and the score is the mean squared log error over
+        every held-out protocol, each counted once. The candidate with the lowest score won,
+        and the board uses those knobs with the multiples fitted on all 128. The grid lets any
+        knob fall to its edge, and on this snapshot the growth weight does: seven-day TVL
+        change does not predict market cap on the held-out folds, so the fitted weight is 0
+        and the growth term adds nothing. The board still prints the 7-day change on every row
+        — the figure is there to read; the model does not pretend it predicts value. The table
+        below scores the fitted model and the previous model (fixed 0.40 growth weight, 0.70
+        maturity floor, no size term, hard 4-sample category rule) on the same held-out folds.</p>
       <table class="multiples" id="validation">
         <thead><tr><th>Fold</th><th>Protocols held out</th><th>Model</th><th>Median error</th><th>RMSE (log)</th><th>Within 2×</th></tr></thead>
         <tbody></tbody>
@@ -65,16 +70,27 @@
         <thead><tr><th>Age bucket</th><th>Token protocols</th><th>All protocols</th><th>Rate used</th></tr></thead>
         <tbody></tbody>
       </table>
-      <p><strong>What to trust.</strong> Each row carries a confidence level. High means no
-        flag: the category counted at least 4 token protocols, the growth and the listing date
-        were reported, the multiple stayed inside its clamp, and the size adjustment is small.
-        Every flag is listed on the row's detail view — thin category evidence, a clamped
-        multiple, missing growth or listing date, or a large size adjustment. Three things the
-        numbers cannot do: the snapshot carries market cap, not fully diluted value, so every
-        multiple here is a market-cap multiple; 15 token protocols record a zero market cap
-        and are left out of the fit, because a zero is a missing value, not a value; and within
-        a category, token protocols' ratios spread by 10× or more, so any single multiple is
-        an estimate.</p>
+      <p><strong>Reading the top of the board.</strong> The top rows cluster in a few
+        categories — risk curators and capital allocators — because those categories' token
+        protocols carry the highest shrunk multiples and the largest TVLs, and the ranking is
+        TVL-led: a board that ranked by anything else would not be a value board. The token
+        odds up there look low, mostly under 15%, because most pre-token protocols never
+        launch at all; the implied value is the value <em>if</em> one launches, and the odds
+        say how often peers do. A reader may also recognise a name or two in the top ten as a
+        token that trades; their records in this snapshot carry no token, so the rule ranks
+        them, and the board reports the record — it does not claim the protocol has no token.
+        The confidence strip on each row says when the evidence behind it is thin.</p>
+      <p><strong>What to trust.</strong> Each row carries a confidence level, and it counts
+        the evidence behind the row only. High means no flag: the category counted at least 4
+        token protocols, the growth and the listing date were reported, and the multiple stayed
+        inside its clamp. Every flag is listed on the row's detail view — thin category
+        evidence, a clamped multiple, or a missing growth or listing date. The size adjustment
+        is a fitted part of the model, shown on the detail view, not an evidence gap, so it
+        does not move the level. Three things the numbers cannot do: the snapshot carries
+        market cap, not fully diluted value, so every multiple here is a market-cap multiple;
+        15 token protocols record a zero market cap and are left out of the fit, because a
+        zero is a missing value, not a value; and within a category, token protocols' ratios
+        spread by 10× or more, so any single multiple is an estimate.</p>
       <p>The table below lists every category multiple the model used, with its sample size,
         so the ranking can be checked from the snapshot alone.</p>
       <table class="multiples" id="multiples">

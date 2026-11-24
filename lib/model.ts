@@ -1,4 +1,4 @@
-// Token launch radar, model v3 ("fitted").
+// Token launch radar, model v4 ("fitted").
 //
 // The board ranks pre-token protocols by an implied value fitted from the
 // snapshot itself, never from a hand-written list of names:
@@ -27,13 +27,13 @@
 // The fit is a grid search that minimises the mean squared error of
 // log(implied) against log(market cap) on the token protocols — but the
 // knobs are chosen by held-out error, not in-sample error: every candidate
-// is scored on two held-out folds (a deterministic hash split of the token
-// protocols, folds A and B), each time with the multiples table fitted on
-// that fold's training protocols only, and the candidate with the lowest
-// mean held-out error wins. The board uses the winning knobs with the
-// table fitted on all of them, and the dashboard prints the held-out
-// errors next to the previous model's errors on the same folds, so the
-// improvement is checked, not claimed.
+// is scored on five held-out folds (a deterministic hash split of the token
+// protocols, folds A to E, each protocol held out exactly once), each time
+// with the multiples table fitted on that fold's training protocols only,
+// and the candidate with the lowest mean held-out error wins. The board
+// uses the winning knobs with the table fitted on all of them, and the
+// dashboard prints the held-out errors next to the previous model's errors
+// on the same folds, so the improvement is checked, not claimed.
 //
 // Two more things the board carries, both from the snapshot alone:
 //   token odds  = how often protocols like this one have a token: the
@@ -41,10 +41,13 @@
 //               each shrunk toward the global rate of 19%, blended 70/30.
 //               It never moves the ranking; it tells the reader how likely
 //               the launch this board is priced for actually is.
-//   confidence  = what to trust: the category sample behind the multiple,
-//               whether the growth or the listing date was missing, whether
-//               the multiple hit its clamp, and how far the size adjustment
-//               reaches. A row with thin evidence says so on its face.
+//   confidence  = what to trust: the evidence behind the row — the category
+//               sample behind the multiple, whether the growth or the
+//               listing date was missing, and whether the multiple hit its
+//               clamp. The size adjustment is a fitted part of the model,
+//               shown on the row's detail view, not an evidence gap, so it
+//               does not move the level. A row with thin evidence says so
+//               on its face.
 //
 // A protocol is pre-token when its record carries no market cap, no
 // CoinGecko id and no symbol. The board covers the snapshot's whole
@@ -112,7 +115,7 @@ export const MODEL: ModelParams = {
   live_rows: 20,
 };
 
-export const MODEL_VERSION = 'radar-3-fitted';
+export const MODEL_VERSION = 'radar-4-fitted';
 
 const DAY_MS = 86_400_000;
 
@@ -422,12 +425,16 @@ function scoreFold(
   };
 }
 
-/** Every candidate parameter set, in fixed grid order. */
+/** Every candidate parameter set, in fixed grid order. The grid is finer
+ * than v3's around the region the coarse grid preferred, and the growth
+ * weight is allowed to fall to zero: the fit may find that seven-day
+ * growth carries no signal, and the board then says so instead of
+ * pretending otherwise. */
 export function gridCombos(): FitParams[] {
   const combos: FitParams[] = [];
-  for (const k of [0, 2, 4, 8, 16, 32]) {
-    for (const s of [-0.6, -0.45, -0.3, -0.15, 0]) {
-      for (const w of [0, 0.1, 0.2, 0.3, 0.4]) {
+  for (const k of [0, 4, 8, 16, 32, 48, 64]) {
+    for (const s of [-0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0]) {
+      for (const w of [0, 0.1, 0.2, 0.3, 0.4, 0.5]) {
         for (const m of [0.7, 0.8, 0.9, 1]) {
           combos.push({ shrink_k: k, size_exponent: s, growth_weight: w, maturity_floor: m });
         }
@@ -449,35 +456,47 @@ export interface FitResult {
 
 /**
  * The whole fit. The knobs are chosen by held-out error, not by in-sample
- * error: every candidate is scored on both folds' validation sets, each
- * time with the table fitted on that fold's training protocols only, and
- * the candidate with the lowest mean validation error wins. The board then
- * uses the winning knobs with the table fitted on all token protocols.
- * Each fold also scores the previous model on the same split, so the
- * improvement is measured, not asserted.
+ * error: every candidate is scored on five held-out folds (a deterministic
+ * hash split, folds A to E, each token protocol held out exactly once),
+ * each time with the table fitted on that fold's training protocols only.
+ * The score is the mean squared log error over every held-out protocol,
+ * each counted once — the folds are pooled, not averaged, so a small fold
+ * does not count as much as a large one — and the candidate with the
+ * lowest score wins. The board then uses the winning knobs with the table
+ * fitted on all token protocols. Each fold also scores the previous model
+ * on the same split, so the improvement is measured, not asserted.
  */
 export function fitModel(snapshot: Snapshot, model: ModelParams = MODEL): FitResult {
   const fitted = fittableProtocols(snapshot);
   const table = logRatioTable(fitted);
-  const splits = [0, 1].map((foldMod) => {
+  const foldNames = ['A', 'B', 'C', 'D', 'E'];
+  const splits = [0, 1, 2, 3, 4].map((foldMod) => {
     const valid = fitted.filter((p) => fnv1a(p.slug) % 5 === foldMod);
     const train = fitted.filter((p) => fnv1a(p.slug) % 5 !== foldMod);
     return { foldMod, valid, train, trainTable: logRatioTable(train) };
   });
   let best: FitParams = { shrink_k: 4, size_exponent: -0.3, growth_weight: 0, maturity_floor: 1 };
-  let bestAvg = Infinity;
+  let bestScore = Infinity;
   for (const combo of gridCombos()) {
-    const avg =
-      (fitError(splits[0]!.valid, snapshot.as_of, splits[0]!.trainTable, combo, model, false) +
-        fitError(splits[1]!.valid, snapshot.as_of, splits[1]!.trainTable, combo, model, false)) /
-      2;
-    if (avg < bestAvg) {
-      bestAvg = avg;
+    // Pooled held-out error: every held-out protocol counted once.
+    let sumSq = 0;
+    let count = 0;
+    for (const s of splits) {
+      for (const p of s.valid) {
+        const err =
+          logImpliedFor(p, snapshot.as_of, s.trainTable, combo, model, false) - Math.log(p.mcap_usd!);
+        sumSq += err * err;
+        count++;
+      }
+    }
+    const score = count === 0 ? Infinity : sumSq / count;
+    if (score < bestScore) {
+      bestScore = score;
       best = combo;
     }
   }
   const folds: FoldScore[] = splits.map((s) => ({
-    fold: s.foldMod === 0 ? 'A' : 'B',
+    fold: foldNames[s.foldMod]!,
     n_train: s.train.length,
     n_valid: s.valid.length,
     fitted: scoreFold(s.valid, snapshot.as_of, s.trainTable, best, model, false),
@@ -567,7 +586,10 @@ export function tokenOdds(
   };
 }
 
-/** What the reader should and should not trust about one row. */
+/** What the reader should and should not trust about one row: the evidence
+ * behind it, not the size of a fitted adjustment. The size multiplier is
+ * shown on the row's detail view; it is part of the fitted model, not a
+ * gap in the evidence, so it does not move the level. */
 export interface Confidence {
   level: 'high' | 'medium' | 'low';
   flags: string[];
@@ -602,9 +624,6 @@ export function confidenceFor(
   }
   if (v.age === null) {
     flags.push('listing date missing, so the age is assumed to be 365 days');
-  }
-  if (v.sizeMultiplier < 0.5 || v.sizeMultiplier > 2) {
-    flags.push('the size adjustment is large: this TVL sits far from the $100M reference the fit anchors on');
   }
   const level = flags.length === 0 ? 'high' : flags.length === 1 ? 'medium' : 'low';
   return { level, flags };

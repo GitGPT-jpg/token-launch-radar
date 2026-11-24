@@ -6,6 +6,7 @@
 //   #detail=<slug>    open one protocol's detail view
 //   #chain=<chain>    filter the board to one chain
 //   #category=<name>  filter the board to one category
+//   #watchlist=1      show the watchlist only
 //   #q=<text>         filter the board by name or slug
 (function () {
   'use strict';
@@ -385,9 +386,11 @@
     state.q = '';
     state.chain = 'all';
     state.category = 'all';
+    state.watchlistOnly = false;
     document.getElementById('q').value = '';
     document.getElementById('chain').value = 'all';
     document.getElementById('category').value = 'all';
+    document.getElementById('watchlist-only').checked = false;
     if (!hash) return;
     hash.split('&').forEach(function (part) {
       var kv = part.split('=');
@@ -407,6 +410,9 @@
         document.getElementById('q').value = v;
       } else if (k === 'tab' && (v === 'live' || v === 'board')) {
         setTab(v);
+      } else if (k === 'watchlist' && v === '1') {
+        state.watchlistOnly = true;
+        document.getElementById('watchlist-only').checked = true;
       }
     });
   }
