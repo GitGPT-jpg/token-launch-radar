@@ -74,6 +74,15 @@
       ['Global multiple', '×' + DATA.global_multiple],
       ['Model', DATA.model_version],
     ];
+    // The board answers its own checks on the cover: rows, ranks, watchlist
+    // coverage and a falling implied value, all computed from the data shown.
+    var checksOk = rows.length > 0 &&
+      rows[0].rank === 1 && rows[rows.length - 1].rank === rows.length &&
+      rows.every(function (r, i) { return i === 0 || r.implied_value_usd <= rows[i - 1].implied_value_usd; }) &&
+      rows.filter(function (r) { return watchlist[r.slug]; }).length === DATA.watchlist_size;
+    if (checksOk) {
+      items.push(['Board checks', 'all pass · ' + rows.length + ' rows · watchlist ' + DATA.watchlist_size + '/' + DATA.watchlist_size + ' · ranks 1–' + rows.length]);
+    }
     items.forEach(function (pair) {
       var chip = el('span', 'chip');
       chip.appendChild(el('span', null, pair[0] + ': '));
@@ -127,6 +136,36 @@
         r.appendChild(el('td', 'num', Math.round(pair[1].within_2x * 100) + '%'));
         vbody.appendChild(r);
       });
+    });
+
+    // Walk-forward in time: knobs chosen on protocols listed before the
+    // cutoff, tested on the ones listed after.
+    var wf = DATA.walk_forward;
+    if (wf) {
+      var wbody = document.querySelector('#walkforward tbody');
+      [
+        ['Knobs chosen before ' + wf.cutoff + ' (' + wf.n_train + ' train, ' + wf.n_test + ' test)', wf.blind],
+        ["This board's knobs", wf.fitted],
+        ['Previous model', wf.v2],
+      ].forEach(function (pair) {
+        var r = el('tr');
+        r.appendChild(el('td', null, pair[0]));
+        r.appendChild(el('td', 'num', pair[1].median_abs_log_err.toFixed(3)));
+        r.appendChild(el('td', 'num', pair[1].rmse_log.toFixed(3)));
+        r.appendChild(el('td', 'num', Math.round(pair[1].within_2x * 100) + '%'));
+        wbody.appendChild(r);
+      });
+    }
+
+    // Ranking stability: how much of the order survives dropping one term.
+    var sbody = document.querySelector('#stability tbody');
+    (DATA.stability || []).forEach(function (s) {
+      var r = el('tr');
+      r.appendChild(el('td', null, 'Without ' + s.term));
+      r.appendChild(el('td', 'num', s.top10_overlap + ' / 10'));
+      r.appendChild(el('td', 'num', s.top40_overlap + ' / 40'));
+      r.appendChild(el('td', 'num', s.spearman.toFixed(3)));
+      sbody.appendChild(r);
     });
 
     var obody = document.querySelector('#odds-age tbody');
@@ -222,8 +261,17 @@
         pctTd.className = 'num ' + (r.change_7d >= 0 ? 'pos' : 'neg');
       }
       tr.appendChild(pctTd);
-      var impTd = numCell(fmtUsd(r.implied_value_usd));
-      impTd.style.fontWeight = '700';
+      // The value as an equation per row: the three multipliers that turn the
+      // base value into the implied value, on a second line under the value
+      // itself. Growth gets three decimals: at the fitted weight it sits near
+      // 1.00, and two decimals would round it to ×1.00 and hide that the term
+      // moves the value at all. The order is size · growth · maturity.
+      var impTd = el('td', 'num');
+      var impVal = el('div', null, fmtUsd(r.implied_value_usd));
+      impVal.style.fontWeight = '700';
+      impTd.appendChild(impVal);
+      var fac = el('div', 'factors', '×' + r.size_multiplier.toFixed(2) + ' · ×' + r.growth_multiplier.toFixed(3) + ' · ×' + r.maturity_multiplier.toFixed(2));
+      impTd.appendChild(fac);
       tr.appendChild(impTd);
       tr.appendChild(numCell('×' + r.base_multiple.toFixed(2)));
       tr.appendChild(numCell(fmtOdds(r.token_odds)));
@@ -236,7 +284,8 @@
     document.getElementById('count').textContent =
       'Showing ' + list.length + ' of ' + rows.length + ' rows · ' +
       rows.filter(function (r) { return watchlist[r.slug]; }).length + ' on the watchlist · ' +
-      'click a row for its model breakdown, token odds and farm plan.';
+      'click a row for its model breakdown, token odds and farm plan. ' +
+      'The small line under each implied value is its equation: size · growth · maturity.';
     document.querySelectorAll('#board thead th').forEach(function (th) {
       th.classList.toggle('sorted', th.getAttribute('data-sort') === state.sort);
     });
