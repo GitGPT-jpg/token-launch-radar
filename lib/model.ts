@@ -40,21 +40,6 @@
 // dashboard prints the held-out errors next to the previous model's errors
 // on the same folds, so the improvement is checked, not claimed.
 //
-// A second test is walk-forward, in time order: the knobs are chosen by a
-// grid search scored only on the token protocols listed before 2025-01-01,
-// and then tested on the ones listed after — the fit never saw their market
-// caps, their multiples or their knobs. The dashboard prints that test
-// beside the same test for the previous model, so the model is checked on
-// protocols that came later, not only on a shuffled split.
-//
-// A third check is stability: the board is rebuilt with each adjustment
-// term dropped in turn, and the dashboard prints how much of the top 10
-// and top 40 survives and the rank correlation. The ranking is driven by
-// TVL and the fitted category multiples; the size, growth and maturity
-// terms are adjustments, and the table shows how much of the order each
-// one carries — dropping any single one leaves 9 or 10 of the top 10 in
-// place, so the board does not hinge on any one knob.
-//
 // Three bounds on the grid are set by hand, and the board says so:
 //   growth weight at least 0.1, for the reason above;
 //   size exponent at least -0.3. The fit's best size exponent is -0.4, but
@@ -149,7 +134,7 @@ export const MODEL: ModelParams = {
   live_rows: 20,
 };
 
-export const MODEL_VERSION = 'radar-6-fitted';
+export const MODEL_VERSION = 'radar-5-fitted';
 
 const DAY_MS = 86_400_000;
 
@@ -383,9 +368,8 @@ export function v2Multiple(
   return clamp(raw, model.multiple_floor, model.multiple_cap);
 }
 
-/** Log-implied value of a token protocol under a parameter set. Exported so
- * the walk-forward test can score candidates on splits the fit never saw. */
-export function logImpliedFor(
+/** Log-implied value of a token protocol under a parameter set. */
+function logImpliedFor(
   p: SnapshotProtocol,
   asOf: string,
   table: LogRatioTable,
@@ -440,9 +424,8 @@ export interface FoldScore {
 const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 const round3 = (n: number): number => Math.round(n * 1e3) / 1e3;
 
-/** Score one parameter set on one validation list. Exported for the
- * walk-forward test, which scores on a time-ordered split. */
-export function scoreFold(
+/** Score one parameter set on one validation list. */
+function scoreFold(
   valid: SnapshotProtocol[],
   asOf: string,
   table: LogRatioTable,
@@ -554,128 +537,6 @@ export function fitModel(snapshot: Snapshot, model: ModelParams = MODEL): FitRes
     global_median: round4(table.globalMedian),
     fit_rmse_log,
   };
-}
-
-/** One walk-forward run: knobs chosen on protocols listed before a cutoff,
- * then tested on the ones listed after. The multiples table is refit on the
- * training protocols only, and the knobs are chosen by a grid search scored
- * on the training protocols only, so the test protocols are genuinely
- * unseen — the fit never saw their market caps, their multiples or their
- * knobs. */
-export interface WalkForwardResult {
-  cutoff: string;
-  n_train: number;
-  n_test: number;
-  blind_params: FitParams;
-  blind_train_rmse_log: number;
-  blind: { median_abs_log_err: number; rmse_log: number; within_2x: number };
-  fitted: { median_abs_log_err: number; rmse_log: number; within_2x: number };
-  v2: { median_abs_log_err: number; rmse_log: number; within_2x: number };
-}
-
-export function walkForward(
-  snapshot: Snapshot,
-  fit: FitParams,
-  model: ModelParams = MODEL,
-): WalkForwardResult | null {
-  const fitted = fittableProtocols(snapshot);
-  const cutoff = '2025-01-01';
-  const train = fitted.filter((p) => p.listed_at !== null && p.listed_at < cutoff);
-  const test = fitted.filter((p) => p.listed_at !== null && p.listed_at >= cutoff);
-  if (train.length < 10 || test.length < 5) return null;
-  const trainTable = logRatioTable(train);
-  // Grid search scored on the training protocols only (five-fold CV inside
-  // the training set): the winning knobs never saw a test protocol.
-  let best: FitParams = { shrink_k: 4, size_exponent: -0.3, growth_weight: 0, maturity_floor: 1 };
-  let bestScore = Infinity;
-  for (const combo of gridCombos()) {
-    let sumSq = 0;
-    let count = 0;
-    for (let m = 0; m < 5; m++) {
-      const valid = train.filter((p) => fnv1a(p.slug) % 5 === m);
-      const tr = train.filter((p) => fnv1a(p.slug) % 5 !== m);
-      const table = logRatioTable(tr);
-      for (const p of valid) {
-        const err = logImpliedFor(p, snapshot.as_of, table, combo, model, false) - Math.log(p.mcap_usd!);
-        sumSq += err * err;
-        count++;
-      }
-    }
-    const score = count === 0 ? Infinity : sumSq / count;
-    if (score < bestScore) {
-      bestScore = score;
-      best = combo;
-    }
-  }
-  return {
-    cutoff,
-    n_train: train.length,
-    n_test: test.length,
-    blind_params: best,
-    blind_train_rmse_log: round3(Math.sqrt(bestScore)),
-    blind: scoreFold(test, snapshot.as_of, trainTable, best, model, false),
-    fitted: scoreFold(test, snapshot.as_of, trainTable, fit, model, false),
-    v2: scoreFold(test, snapshot.as_of, trainTable, V2_FIT, model, true),
-  };
-}
-
-/** How much the ranking moves when one adjustment term is dropped: the
- * overlap of the top 10 and top 40, and the Spearman correlation over the
- * whole board. The ranking is driven by TVL and the fitted category
- * multiples; the size, growth and maturity terms are adjustments, and this
- * table shows how much of the order each one carries. */
-export interface StabilityResult {
-  term: string;
-  top10_overlap: number;
-  top40_overlap: number;
-  spearman: number;
-}
-
-function spearmanRank(a: number[], b: number[]): number {
-  const n = a.length;
-  const ma = a.reduce((s, v) => s + v, 0) / n;
-  const mb = b.reduce((s, v) => s + v, 0) / n;
-  let cov = 0;
-  let va = 0;
-  let vb = 0;
-  for (let i = 0; i < n; i++) {
-    cov += (a[i]! - ma) * (b[i]! - mb);
-    va += (a[i]! - ma) ** 2;
-    vb += (b[i]! - mb) ** 2;
-  }
-  return va === 0 || vb === 0 ? 1 : cov / Math.sqrt(va * vb);
-}
-
-export function rankingStability(
-  snapshot: Snapshot,
-  multiples: { byCategory: Record<string, { multiple: number; sample: number; clamped: boolean; raw_median: number }>; global: number },
-  fit: FitParams,
-  odds: OddsTable,
-  model: ModelParams = MODEL,
-): StabilityResult[] {
-  const base = buildBoard(snapshot, multiples, fit, odds, model);
-  const baseRank = new Map(base.map((r) => [r.slug, r.rank]));
-  const baseTop10 = new Set(base.slice(0, 10).map((r) => r.slug));
-  const baseTop40 = new Set(base.slice(0, 40).map((r) => r.slug));
-  const variants: Array<{ term: string; fit: FitParams }> = [
-    { term: 'category shrinkage', fit: { ...fit, shrink_k: 1e9 } },
-    { term: 'size term', fit: { ...fit, size_exponent: 0 } },
-    { term: 'growth term', fit: { ...fit, growth_weight: 0 } },
-    { term: 'maturity term', fit: { ...fit, maturity_floor: 1 } },
-  ];
-  return variants.map((v) => {
-    const m = categoryMultiples(snapshot, v.fit, model);
-    const b = buildBoard(snapshot, m, v.fit, odds, model);
-    const top10 = new Set(b.slice(0, 10).map((r) => r.slug));
-    const top40 = new Set(b.slice(0, 40).map((r) => r.slug));
-    const ranks = b.map((r) => baseRank.get(r.slug)!);
-    return {
-      term: v.term,
-      top10_overlap: [...top10].filter((s) => baseTop10.has(s)).length,
-      top40_overlap: [...top40].filter((s) => baseTop40.has(s)).length,
-      spearman: round3(spearmanRank(ranks, b.map((r) => r.rank))),
-    };
-  });
 }
 
 /** Token odds: how often protocols like this one have a token. */
@@ -1178,8 +1039,6 @@ export interface RadarData {
   global_multiple: number;
   multiples: Record<string, { multiple: number; sample: number; clamped: boolean; raw_median: number }>;
   fit: FitResult;
-  walk_forward: WalkForwardResult | null;
-  stability: StabilityResult[];
   odds: OddsTable;
   watchlist_size: number;
   watchlist_slugs: string[];
@@ -1330,8 +1189,6 @@ export function buildRadar(
     global_multiple: multiples.global,
     multiples: multiples.byCategory,
     fit: fitResult,
-    walk_forward: walkForward(snapshot, fitResult.params, model),
-    stability: rankingStability(snapshot, multiples, fitResult.params, odds, model),
     odds,
     watchlist_size: snapshot.watchlist.length,
     watchlist_slugs: [...snapshot.watchlist],

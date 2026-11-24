@@ -33,7 +33,7 @@ button { cursor: pointer; }
 
 /* Masthead */
 .masthead { background: linear-gradient(118deg, #1d2733 0%, #28394f 70%, #2e3d55 100%); color: #f6f2ea; border-bottom: 4px solid var(--accent); }
-.masthead-inner { max-width: 1340px; margin: 0 auto; padding: 34px 20px 26px; }
+.masthead-inner { max-width: 1180px; margin: 0 auto; padding: 34px 20px 26px; }
 .kicker {
   margin: 0 0 8px;
   font: 700 12px/1 var(--font-ui);
@@ -54,7 +54,7 @@ button { cursor: pointer; }
 }
 .chip b { color: #f2b27c; font-weight: 700; }
 
-main { max-width: 1340px; margin: 0 auto; padding: 20px 20px 40px; }
+main { max-width: 1180px; margin: 0 auto; padding: 20px 20px 40px; }
 
 /* Method */
 .method {
@@ -136,7 +136,6 @@ main { max-width: 1340px; margin: 0 auto; padding: 20px 20px 40px; }
 .board tbody tr:hover { background: var(--accent-soft); }
 .board tbody tr.selected { background: #f6ddc8; }
 .board td.num, .board th.num { text-align: right; font-family: var(--font-num); font-size: 13px; }
-.board td.num .factors { font-size: 11px; font-weight: 400; color: var(--ink-soft); }
 .board td.name { font-weight: 700; white-space: normal; min-width: 140px; }
 .board td.name .slug { display: block; font-weight: 400; font-size: 12px; color: var(--ink-soft); font-family: var(--font-num); }
 .rank-badge {
@@ -239,4 +238,4 @@ main { max-width: 1340px; margin: 0 auto; padding: 20px 20px 40px; }
   font-weight: 600;
 }
 
-footer { max-width: 1340px; margin: 0 auto; padding: 0 20px 34px; color: var(--ink-soft); font-size: 13px; }
+footer { max-width: 1180px; margin: 0 auto; padding: 0 20px 34px; color: var(--ink-soft); font-size: 13px; }

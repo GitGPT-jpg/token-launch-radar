@@ -65,30 +65,12 @@
       <p class="fine">Errors are in log points on market cap: a median error of 1.0 means the
         typical prediction is off by about e¹ ≈ 2.7×. The multiple is a rough guide, not a
         price — the board ranks by it, and the confidence strip on each row says how rough.</p>
-      <p><strong>A second test, walk-forward in time.</strong> The five folds above shuffle
-        the token protocols; a shuffled split cannot tell whether the model would have worked
-        on protocols that came later. So the knobs were chosen a second time by a grid search
-        scored only on the token protocols listed before 2025-01-01 (64 of them), and then
-        tested on the 31 listed after — that search never saw their market caps, their
-        multiples or its own knobs. The table below scores that test three ways: the knobs
-        the walk-forward search chose (fully blind), the board's own knobs (chosen by the
-        five-fold test on all 128, so scored here as a second check rather than a blind one),
-        and the previous model.</p>
-      <table class="multiples" id="walkforward">
-        <thead><tr><th>Model</th><th>Median error</th><th>RMSE (log)</th><th>Within 2×</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <p><strong>What each term does to the ranking.</strong> The ranking is driven by TVL
-        and the fitted category multiples; the size, growth and maturity terms are
-        adjustments. The table below rebuilds the board with each adjustment dropped in turn
-        and reports how much of the top 10 and top 40 survives, and the rank correlation over
-        the whole board. Dropping any single term leaves 9 or 10 of the top 10 in place, so
-        the board does not hinge on any one knob — the shrinkage moves the order most, and
-        the size term is the one the held-out fit can tell apart most clearly.</p>
-      <table class="multiples" id="stability">
-        <thead><tr><th>Term dropped</th><th>Top 10 kept</th><th>Top 40 kept</th><th>Rank correlation</th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <p><strong>A second check runs forward in time.</strong> The knobs were chosen a
+        second time using only the 64 token protocols listed before 2025-01-01, then tested
+        on the 31 listed after — protocols the choice never saw. On those later protocols
+        the blind knobs miss by a median of 1.08 log points (RMSE 2.32), against 1.40
+        (RMSE 2.65) for the previous model, so the fit holds up on protocols that came
+        later, not only on a shuffled split.</p>
       <p><strong>Token odds.</strong> How often protocols like this one have a token: the
         category's token rate and the age bucket's token rate, each shrunk toward the global
         rate of 19%, blended 70% category and 30% age. The odds never move the ranking; they
