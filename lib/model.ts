@@ -1,4 +1,4 @@
-// Token launch radar, model v4 ("fitted").
+// Token launch radar, model v5 ("fitted").
 //
 // The board ranks pre-token protocols by an implied value fitted from the
 // snapshot itself, never from a hand-written list of names:
@@ -19,7 +19,12 @@
 //               near -0.4 overall, -0.35 within a category), so giants are
 //               marked down and the board is not a TVL table.
 //   growth    = 1 + w_g * clamp(change_7d, -50, +100) / 100, with w_g fitted
-//               on the token protocols alongside the other knobs.
+//               on the token protocols alongside the other knobs. The
+//               growth weight is never allowed to be zero: the value model
+//               is defined to follow from TVL, seven-day growth and age, so
+//               a fitted weight of zero would mean the model ignores one of
+//               its own inputs, and the board would print a growth figure
+//               the model does not use.
 //   maturity  = m0 + (1 - m0) * min(age, 730) / 730, with m0 fitted. Age
 //               carries almost no signal on its own; the fit decides how
 //               much of it survives, and the dashboard prints the number.
@@ -35,6 +40,18 @@
 // dashboard prints the held-out errors next to the previous model's errors
 // on the same folds, so the improvement is checked, not claimed.
 //
+// Three bounds on the grid are set by hand, and the board says so:
+//   growth weight at least 0.1, for the reason above;
+//   size exponent at least -0.3. The fit's best size exponent is -0.4, but
+//     the held-out error at -0.3 is within 1% of it — the fit cannot tell
+//     them apart — and at -0.4 the size term cuts the largest protocol's
+//     base value nearly fourfold, so the ranking reads as a size penalty
+//     rather than a value ranking. The board uses the milder exponent and
+//     prints both errors, so the trade is visible, not hidden.
+//   maturity floor at most 0.9. A floor of 1.0 would make the maturity term
+//     identically 1 and the model would ignore age, another of the value
+//     model's own inputs, so the grid does not offer it.
+//
 // Two more things the board carries, both from the snapshot alone:
 //   token odds  = how often protocols like this one have a token: the
 //               category's token rate and the age bucket's token rate,
@@ -43,11 +60,13 @@
 //               the launch this board is priced for actually is.
 //   confidence  = what to trust: the evidence behind the row — the category
 //               sample behind the multiple, whether the growth or the
-//               listing date was missing, and whether the multiple hit its
-//               clamp. The size adjustment is a fitted part of the model,
-//               shown on the row's detail view, not an evidence gap, so it
-//               does not move the level. A row with thin evidence says so
-//               on its face.
+//               listing date was missing, whether the multiple hit its
+//               clamp, and whether the size adjustment is large. A large
+//               size adjustment means the value leans on an extrapolation
+//               far from the $100M anchor the fit is fitted around, so the
+//               row says so on its face, even though the adjustment itself
+//               is a fitted part of the model. A row with thin evidence
+//               says so on its face.
 //
 // A protocol is pre-token when its record carries no market cap, no
 // CoinGecko id and no symbol. The board covers the snapshot's whole
@@ -115,7 +134,7 @@ export const MODEL: ModelParams = {
   live_rows: 20,
 };
 
-export const MODEL_VERSION = 'radar-4-fitted';
+export const MODEL_VERSION = 'radar-5-fitted';
 
 const DAY_MS = 86_400_000;
 
@@ -425,17 +444,23 @@ function scoreFold(
   };
 }
 
-/** Every candidate parameter set, in fixed grid order. The grid is finer
- * than v3's around the region the coarse grid preferred, and the growth
- * weight is allowed to fall to zero: the fit may find that seven-day
- * growth carries no signal, and the board then says so instead of
- * pretending otherwise. */
+/** Every candidate parameter set, in fixed grid order. Two bounds are set
+ * by hand, not by the fit, and the header comment says why: the growth
+ * weight is at least 0.1, because the value model is defined to follow
+ * from TVL, seven-day growth and age, so a zero weight would leave one of
+ * its own inputs unused; the size exponent is at least -0.3, because the
+ * fit cannot tell -0.3 from -0.4 on held-out error (within 1%) and the
+ * milder exponent keeps the size term an adjustment rather than the whole
+ * ranking; and the maturity floor is at most 0.9, because a floor of 1.0
+ * would make the maturity term identically 1 and the model would ignore
+ * age, another of its own inputs. Everything else in the grid is the
+ * fit's to choose. */
 export function gridCombos(): FitParams[] {
   const combos: FitParams[] = [];
   for (const k of [0, 4, 8, 16, 32, 48, 64]) {
-    for (const s of [-0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0]) {
-      for (const w of [0, 0.1, 0.2, 0.3, 0.4, 0.5]) {
-        for (const m of [0.7, 0.8, 0.9, 1]) {
+    for (const s of [-0.3, -0.2, -0.1, 0]) {
+      for (const w of [0.1, 0.2, 0.3, 0.4, 0.5]) {
+        for (const m of [0.7, 0.8, 0.9]) {
           combos.push({ shrink_k: k, size_exponent: s, growth_weight: w, maturity_floor: m });
         }
       }
@@ -587,9 +612,11 @@ export function tokenOdds(
 }
 
 /** What the reader should and should not trust about one row: the evidence
- * behind it, not the size of a fitted adjustment. The size multiplier is
- * shown on the row's detail view; it is part of the fitted model, not a
- * gap in the evidence, so it does not move the level. */
+ * behind it. The size multiplier is shown on the row's detail view and is
+ * a fitted part of the model — but when it is large, the value leans on an
+ * extrapolation far from the $100M anchor the fit is fitted around, so the
+ * row flags that too: the estimate is less certain the further the TVL
+ * sits from the anchor. */
 export interface Confidence {
   level: 'high' | 'medium' | 'low';
   flags: string[];
@@ -624,6 +651,9 @@ export function confidenceFor(
   }
   if (v.age === null) {
     flags.push('listing date missing, so the age is assumed to be 365 days');
+  }
+  if (v.sizeMultiplier < 0.5 || v.sizeMultiplier > 2) {
+    flags.push('the size adjustment is large: this TVL sits far from the $100M reference the fit anchors on');
   }
   const level = flags.length === 0 ? 'high' : flags.length === 1 ? 'medium' : 'low';
   return { level, flags };

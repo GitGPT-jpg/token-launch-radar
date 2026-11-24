@@ -300,7 +300,10 @@
       ['Category multiple', '×' + row.base_multiple.toFixed(4), 'shrunk median market-cap/TVL of its category'],
       ['Base value', fmtUsdFull(row.base_usd), 'TVL × multiple'],
       ['Size', '×' + row.size_multiplier.toFixed(2), 'TVL against the $100M reference'],
-      ['7d growth', fmtPct(row.growth_pct) + ' → ×' + row.growth_multiplier.toFixed(2), 'clamped −50% to +100%'],
+      // Three decimals for the growth multiplier: at the fitted weight it
+      // sits near 1.00, and two decimals would round it to ×1.00 and hide
+      // that the term moves the value at all.
+      ['7d growth', fmtPct(row.growth_pct) + ' → ×' + row.growth_multiplier.toFixed(3), 'clamped −50% to +100%'],
       ['Maturity', '×' + row.maturity_multiplier.toFixed(2), fmtAge(row.age_days) + ' old'],
       ['Token odds', fmtOdds(row.token_odds), 'category ' + Math.round(row.odds_category_rate * 100) + '% · age ' + row.odds_age_bucket + ' ' + Math.round(row.odds_age_rate * 100) + '%'],
     ];
