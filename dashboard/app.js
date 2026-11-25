@@ -319,6 +319,11 @@
     total.appendChild(el('div', 'value', fmtUsdFull(row.implied_value_usd)));
     total.appendChild(el('div', 'formula', 'base × size × growth × maturity'));
     grid.appendChild(total);
+    var expected = el('div', 'model-cell total');
+    expected.appendChild(el('div', 'label', 'Expected value'));
+    expected.appendChild(el('div', 'value', fmtUsdFull(row.expected_value_usd)));
+    expected.appendChild(el('div', 'formula', 'implied × token odds — what the launch is worth on average'));
+    grid.appendChild(expected);
     box.appendChild(grid);
 
     var strip = el('div', 'integrity conf-' + row.confidence);

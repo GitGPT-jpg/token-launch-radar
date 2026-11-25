@@ -971,6 +971,13 @@ export interface BoardRow {
   token_status: 'pre-token';
   age_days: number | null;
   implied_value_usd: number;
+  /** The odds-weighted value: implied × token odds. The implied value is
+   * what the token would be worth if it launches; the expected value is
+   * that figure weighted by how often peers like this one actually
+   * launch, so it is the value a farmer should plan around. It never
+   * moves the ranking (the board still ranks by the implied value), it
+   * only tells the reader what the launch is worth on average. */
+  expected_value_usd: number;
   token_odds: number;
   odds_category_rate: number;
   odds_age_rate: number;
@@ -1002,6 +1009,7 @@ export interface RadarRow {
   listed_at: string | null;
   age_days: number | null;
   implied_value_usd: number;
+  expected_value_usd: number;
   token_odds: number;
   odds_category_rate: number;
   odds_age_rate: number;
@@ -1102,6 +1110,7 @@ export function buildBoard(
     token_status: 'pre-token' as const,
     age_days: s.age,
     implied_value_usd: s.implied,
+    expected_value_usd: Math.round(s.implied * s.odds.odds),
     token_odds: s.odds.odds,
     odds_category_rate: s.odds.categoryRate,
     odds_age_rate: s.odds.ageRate,
@@ -1152,6 +1161,7 @@ export function radarRow(row: BoardRow): RadarRow {
     listed_at: row.listed_at,
     age_days: row.age_days,
     implied_value_usd: row.implied_value_usd,
+    expected_value_usd: row.expected_value_usd,
     token_odds: row.token_odds,
     odds_category_rate: row.odds_category_rate,
     odds_age_rate: row.odds_age_rate,
